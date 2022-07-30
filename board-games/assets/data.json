@@ -1,0 +1,32 @@
+[
+    {
+        "id":1, 
+        "name":"Tsuro", 
+        "coop":false, 
+        "info":"One doesnt like it"
+    },
+    {
+        "id":2, 
+        "name":"Rumble in the House", 
+        "coop":false, 
+        "info":"One doesnt like it"
+    }, 
+    {
+        "id":3, 
+        "name":"Flamme Rouge", 
+        "coop":false, 
+        "info":"One likes it"
+    }, 
+    {
+        "id":4, 
+        "name":"Potion Explosion", 
+        "coop":false, 
+        "info":"not sure anyone likes it, but perhaps they do"
+    }, 
+    {
+        "id":5, 
+        "name":"The Crew", 
+        "coop":true, 
+        "info":"everyone seems to like it"
+    }
+]
