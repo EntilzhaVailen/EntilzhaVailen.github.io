@@ -17,6 +17,7 @@
       }
 
       * { box-sizing: border-box; }
+      html, body { overscroll-behavior: none; }
       body { margin: 0; min-height: 100svh; overflow: hidden; }
       button { font: inherit; }
       .game {
@@ -69,6 +70,7 @@
       .board {
         --depth: 28px;
         position: relative;
+        touch-action: none;
         width: 444px;
         height: 444px;
         transform-style: preserve-3d;
@@ -465,6 +467,8 @@
         board.addEventListener("touchstart", (event) => {
           if (event.touches.length === 1) touchStart = [event.touches[0].clientX, event.touches[0].clientY];
         }, { passive: true });
+        // iOS Safari ignores touch-action for rubber-band scrolling, so block it explicitly.
+        board.addEventListener("touchmove", (event) => event.preventDefault(), { passive: false });
         board.addEventListener("touchend", (event) => {
           if (!touchStart || !event.changedTouches.length) return;
           const deltaX = event.changedTouches[0].clientX - touchStart[0];
