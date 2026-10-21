@@ -338,6 +338,108 @@
           catch { /* Storage may be disabled when opened from a restricted file URL. */ }
         }
 
+        function encodeState() {
+          let board = 0n;
+          for (const tile of live(state.tiles)) {
+            const exponent = Math.log2(tile.value);
+            if (!Number.isInteger(exponent) || exponent > 63) return;
+            const index = tile.row * SIZE + tile.col;
+            board |= BigInt(exponent) << BigInt(index * 6);
+          }
+          if (!Number.isSafeInteger(state.score) || state.score < 0) return;
+          const bytes = [];
+          for (let index = 0; index < 12; index += 1) {
+            bytes.push(Number((board >> BigInt(index * 8)) & 255n));
+          }
+          let score = state.score;
+          do {
+            const byte = score % 128;
+            score = Math.floor(score / 128);
+            bytes.push(byte | (score ? 128 : 0));
+          } while (score);
+          const chanceCode = { 0: 0, 0.1: 1, 0.2: 2 }[fourChance];
+          if (chanceCode === undefined) return;
+          bytes.push(chanceCode | (state.keepPlaying ? 4 : 0));
+          const code = btoa(String.fromCharCode(...bytes))
+            .replace(/\+/g, "-")
+            .replace(/\//g, "_")
+            .replace(/=+$/, "");
+          const query = new URLSearchParams(window.location.search);
+          query.set("s", code);
+          history.replaceState(null, "", `${location.pathname}?${query}${location.hash}`);
+        }
+
+        function decodeState(best) {
+          const code = new URLSearchParams(window.location.search).get("s");
+          if (!code) return null;
+          let board;
+          let score;
+          let chanceCode;
+          let keepPlaying;
+          const legacy = code.match(/^([0-9a-f]{24})-([0-9a-z]+)-([012])-([01])$/i);
+          if (legacy) {
+            board = BigInt(`0x${legacy[1]}`);
+            score = Number.parseInt(legacy[2], 36);
+            chanceCode = Number(legacy[3]);
+            keepPlaying = legacy[4] === "1";
+          } else {
+            if (!/^[A-Za-z0-9_-]+$/.test(code)) return null;
+            let bytes;
+            try {
+              const base64 = code.replace(/-/g, "+").replace(/_/g, "/");
+              bytes = Uint8Array.from(atob(base64 + "=".repeat((4 - base64.length % 4) % 4)), (char) => char.charCodeAt(0));
+            } catch {
+              return null;
+            }
+            if (bytes.length < 14 || bytes.length > 21) return null;
+            board = 0n;
+            for (let index = 0; index < 12; index += 1) {
+              board |= BigInt(bytes[index]) << BigInt(index * 8);
+            }
+            score = 0;
+            let multiplier = 1;
+            let scoreComplete = false;
+            for (let index = 12; index < bytes.length - 1; index += 1) {
+              const byte = bytes[index];
+              score += (byte & 127) * multiplier;
+              if (!Number.isSafeInteger(score)) return null;
+              if (!(byte & 128)) {
+                if (index !== bytes.length - 2) return null;
+                scoreComplete = true;
+                break;
+              }
+              multiplier *= 128;
+            }
+            if (!scoreComplete) return null;
+            const flags = bytes[bytes.length - 1];
+            chanceCode = flags & 3;
+            if (chanceCode > 2 || (flags & 248)) return null;
+            keepPlaying = Boolean(flags & 4);
+          }
+          if (!Number.isSafeInteger(score)) return null;
+          const tiles = [];
+          for (let index = 0; index < SIZE * SIZE; index += 1) {
+            const exponent = Number((board >> BigInt(index * 6)) & 63n);
+            if (exponent) tiles.push({
+              id: nextId++,
+              value: 2 ** exponent,
+              row: Math.floor(index / SIZE),
+              col: index % SIZE,
+              kind: "normal",
+            });
+          }
+          fourChance = [0, 0.1, 0.2][chanceCode];
+          const won = hasWon(tiles);
+          return {
+            tiles,
+            score,
+            best: Math.max(best, score),
+            won,
+            over: !canMove(tiles),
+            keepPlaying: won && keepPlaying,
+          };
+        }
+
         function init(best = readBest()) {
           return { tiles: newBoard(), score: 0, best, won: false, over: false, keepPlaying: false };
         }
@@ -417,6 +519,7 @@
           } else if (overlay) {
             overlay.remove();
           }
+          encodeState();
         }
 
         function restart(chance = fourChance) {
@@ -478,7 +581,7 @@
           play(Math.abs(deltaX) > Math.abs(deltaY) ? (deltaX > 0 ? "right" : "left") : (deltaY > 0 ? "down" : "up"));
         }, { passive: true });
 
-        state = init();
+        state = decodeState(readBest()) ?? init();
         render();
       })();
     </script>
