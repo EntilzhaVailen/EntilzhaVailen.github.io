@@ -197,6 +197,7 @@
           <div class="score-box"><span>Score</span><strong id="score">0</strong></div>
           <div class="score-box"><span>Best</span><strong id="best">0</strong></div>
         </div>
+        <button class="btn" id="share-game" type="button">Share Game</button>
         <button class="btn" id="restart" type="button">New Game</button>
       </header>
       <section class="scene" aria-label="Game board">
@@ -224,15 +225,18 @@
         const CELL = 96;
         const GAP = 12;
         const BEST_KEY = "iso2048-best";
+        const STATE_KEY = "iso2048-state";
         const HUES = { 2: 200, 4: 185, 8: 165, 16: 140, 32: 95, 64: 50, 128: 30, 256: 10, 512: 340, 1024: 310, 2048: 280 };
         const KEY_DIRS = { ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right" };
         const board = document.getElementById("board");
         const boardTop = document.getElementById("board-top");
         const scoreElement = document.getElementById("score");
         const bestElement = document.getElementById("best");
+        const shareGameButton = document.getElementById("share-game");
         const newGameDialog = document.getElementById("new-game-dialog");
         let nextId = 1;
         let fourChance = 0;
+        let sourceStateCode = new URLSearchParams(window.location.search).get("s");
         let state;
 
         for (let index = 0; index < SIZE * SIZE; index += 1) {
@@ -364,13 +368,10 @@
             .replace(/\+/g, "-")
             .replace(/\//g, "_")
             .replace(/=+$/, "");
-          const query = new URLSearchParams(window.location.search);
-          query.set("s", code);
-          history.replaceState(null, "", `${location.pathname}?${query}${location.hash}`);
+          return code;
         }
 
-        function decodeState(best) {
-          const code = new URLSearchParams(window.location.search).get("s");
+        function decodeState(best, code = sourceStateCode) {
           if (!code) return null;
           let board;
           let score;
@@ -438,6 +439,23 @@
             over: !canMove(tiles),
             keepPlaying: won && keepPlaying,
           };
+        }
+
+        function readSavedState() {
+          try {
+            const saved = JSON.parse(localStorage.getItem(STATE_KEY));
+            if (saved?.source !== sourceStateCode || typeof saved.code !== "string") return null;
+            return decodeState(readBest(), saved.code);
+          } catch {
+            return null;
+          }
+        }
+
+        function saveState() {
+          const code = encodeState();
+          if (!code) return;
+          try { localStorage.setItem(STATE_KEY, JSON.stringify({ source: sourceStateCode, code })); }
+          catch { /* Storage may be disabled when opened from a restricted file URL. */ }
         }
 
         function init(best = readBest()) {
@@ -519,7 +537,7 @@
           } else if (overlay) {
             overlay.remove();
           }
-          encodeState();
+          saveState();
         }
 
         function restart(chance = fourChance) {
@@ -546,7 +564,22 @@
           render();
         }
 
+        async function shareGame() {
+          const code = encodeState();
+          if (!code) return;
+          const url = new URL(window.location.href);
+          url.searchParams.set("s", code);
+          try {
+            await navigator.clipboard.writeText(url.href);
+            shareGameButton.textContent = "Copied!";
+            window.setTimeout(() => { shareGameButton.textContent = "Share Game"; }, 1200);
+          } catch {
+            window.prompt("Copy this game link:", url.href);
+          }
+        }
+
         document.getElementById("restart").addEventListener("click", () => newGameDialog.showModal());
+        shareGameButton.addEventListener("click", shareGame);
         newGameDialog.addEventListener("click", (event) => {
           const bounds = newGameDialog.getBoundingClientRect();
           const clickedOutside = event.clientX < bounds.left || event.clientX > bounds.right ||
@@ -581,7 +614,7 @@
           play(Math.abs(deltaX) > Math.abs(deltaY) ? (deltaX > 0 ? "right" : "left") : (deltaY > 0 ? "down" : "up"));
         }, { passive: true });
 
-        state = decodeState(readBest()) ?? init();
+        state = readSavedState() ?? decodeState(readBest()) ?? init();
         render();
       })();
     </script>
